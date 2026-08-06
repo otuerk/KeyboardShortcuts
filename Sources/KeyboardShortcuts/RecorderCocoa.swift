@@ -432,7 +432,7 @@ extension KeyboardShortcuts {
 				}
 
 				// TODO: Add button to offer to open the relevant system settings pane for the user.
-				if shortcut.isTakenBySystem {
+				if Shortcut.systemConflictCandidates(for: event).contains(where: \.isTakenBySystem) {
 					guard handleConflict(conflictPolicy.systemShortcut, title: "keyboard_shortcut_used_by_system".localized, message: "keyboard_shortcuts_can_be_changed".localized) else {
 						return nil
 					}

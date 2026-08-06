@@ -1821,6 +1821,54 @@ struct ModifierSymbolTests {
 	}
 }
 
+// MARK: - System Conflict Candidate Tests
+
+@Suite("System Conflict Candidate Tests", .serialized)
+struct SystemConflictCandidateTests {
+	private func keyEvent(
+		keyCode: CGKeyCode,
+		modifiers: NSEvent.ModifierFlags
+	) -> NSEvent {
+		NSEvent.keyEvent(
+			with: .keyDown,
+			location: .zero,
+			modifierFlags: modifiers,
+			timestamp: 0,
+			windowNumber: 0,
+			context: nil,
+			characters: "",
+			charactersIgnoringModifiers: "",
+			isARepeat: false,
+			keyCode: UInt16(keyCode)
+		)!
+	}
+
+	@Test("Implicit Function modifier is retained as a system conflict candidate")
+	func testImplicitFunctionModifierCandidate() {
+		let event = keyEvent(
+			keyCode: CGKeyCode(kVK_LeftArrow),
+			modifiers: [.control, .function]
+		)
+		let candidates = KeyboardShortcuts.Shortcut.systemConflictCandidates(for: event)
+
+		#expect(candidates == [
+			KeyboardShortcuts.Shortcut(.leftArrow, modifiers: [.control]),
+			KeyboardShortcuts.Shortcut(.leftArrow, modifiers: [.control, .function])
+		])
+	}
+
+	@Test("Ordinary shortcut produces one system conflict candidate")
+	func testOrdinaryShortcutCandidate() {
+		let event = keyEvent(
+			keyCode: CGKeyCode(kVK_ANSI_C),
+			modifiers: [.control]
+		)
+		let candidates = KeyboardShortcuts.Shortcut.systemConflictCandidates(for: event)
+
+		#expect(candidates == [KeyboardShortcuts.Shortcut(.c, modifiers: [.control])])
+	}
+}
+
 // MARK: - UserDefaults Extension for Testing
 
 extension UserDefaults {

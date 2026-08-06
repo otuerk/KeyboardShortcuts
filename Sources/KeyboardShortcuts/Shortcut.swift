@@ -87,6 +87,29 @@ extension KeyboardShortcuts {
 			self.carbonKeyCode = carbonKeyCode
 			self.carbonModifiers = Self.normalizeModifiers(carbonModifiers)
 		}
+
+		/**
+		The shortcut variants that should be checked for system conflicts when recording a key event.
+
+		macOS implicitly adds the Function modifier to some special keys, including the arrow keys. The
+		stored shortcut intentionally omits that modifier, but symbolic system shortcuts may include it.
+		*/
+		static func systemConflictCandidates(for event: NSEvent) -> [Self] {
+			guard let normalizedShortcut = Self(event: event) else {
+				return []
+			}
+
+			let eventShortcut = Self(
+				carbonKeyCode: Int(event.keyCode),
+				carbonModifiers: event.modifierFlags.carbon
+			)
+
+			guard eventShortcut != normalizedShortcut else {
+				return [normalizedShortcut]
+			}
+
+			return [normalizedShortcut, eventShortcut]
+		}
 	}
 }
 
