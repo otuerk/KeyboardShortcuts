@@ -40,6 +40,9 @@ extension KeyboardShortcuts {
 		private var bindingShortcut: Shortcut?
 		private var canBecomeKey = false
 		private var eventMonitor: LocalEventMonitor?
+		private var lastLocallyHandledKeyEventTimestamp: TimeInterval?
+		private var pendingSystemShortcutFallback: DispatchWorkItem?
+		private var sessionKeyDownEventMonitor: SessionKeyDownEventMonitor?
 		// Stores the shortcut active when recording begins, so unchanged values can be compared against
 		// existing menu bindings and avoid self-conflicts for menu items bound to the same shortcut name.
 		private var shortcutBeforeRecording: Shortcut?
@@ -264,7 +267,11 @@ extension KeyboardShortcuts {
 		}
 
 		private func endRecording() {
+			lastLocallyHandledKeyEventTimestamp = nil
+			pendingSystemShortcutFallback?.cancel()
+			pendingSystemShortcutFallback = nil
 			eventMonitor = nil
+			sessionKeyDownEventMonitor = nil
 			placeholderString = "record_shortcut".localized
 			showsCancelButton = !stringValue.isEmpty
 			restoreCaret()
@@ -395,79 +402,117 @@ extension KeyboardShortcuts {
 					return nil
 				}
 
-				if event.modifiers.isEmpty {
-					switch event.specialKey {
-					case .tab:
-						blur()
+				lastLocallyHandledKeyEventTimestamp = event.timestamp
+				pendingSystemShortcutFallback?.cancel()
+				pendingSystemShortcutFallback = nil
+				return handleRecordedKeyEvent(event)
+			}.start()
 
-						// We intentionally bubble up the event so it can focus the next responder.
-						return event
-					case .delete, .deleteForward, .backspace:
-						clear()
-						return nil
-					default:
-						break
-					}
-
-					if event.keyCode == kVK_Escape { // TODO: Make this strongly typed.
-						blur()
-						return nil
-					}
-				}
-
-				// The “shift” key is not allowed without other modifiers or a function key, since it doesn't actually work.
-				guard
-					!event.modifiers.subtracting([.shift, .function]).isEmpty
-						|| event.specialKey?.isFunctionKey == true,
-					let shortcut = Shortcut(event: event)
-				else {
-					NSSound.beep()
-					return nil
-				}
-
-				let matchingMenuItems = shortcut.takenByMainMenuItems
-				if let menuItem = Self.firstMenuItemRequiringConflictHandling(
-					matchingMenuItems: matchingMenuItems,
-					shortcut: shortcut,
-					shortcutBeforeRecording: shortcutBeforeRecording,
-					shortcutName: shortcutName,
-					usesNamedStorage: storageMode == .name
-				) {
-					let title = String.localizedStringWithFormat("keyboard_shortcut_used_by_menu_item".localized, menuItem.title)
-					// TODO: Find a better way to make it possible to dismiss the alert by pressing "Enter". How can we make the input automatically temporarily lose focus while the alert is open?
-					guard handleConflict(conflictPolicy.menuItem, title: title) else {
-						return nil
-					}
-				}
-
-				// See: https://developer.apple.com/forums/thread/763878?answerId=804374022#804374022
-				if shortcut.isDisallowed, conflictPolicy.disallowed != .allow {
-					showAlert(title: "keyboard_shortcut_disallowed".localized)
-					return nil
-				}
-
-				// TODO: Add button to offer to open the relevant system settings pane for the user.
-				if Shortcut.systemConflictCandidates(for: event).contains(where: \.isTakenBySystem) {
-					guard handleConflict(conflictPolicy.systemShortcut, title: "keyboard_shortcut_used_by_system".localized, message: "keyboard_shortcuts_can_be_changed".localized) else {
-						return nil
-					}
-				}
-
-				if case .disallow(let reason) = validateShortcut?(shortcut) {
-					showAlert(title: reason)
-					return nil
-				}
-
-				stringValue = "\(shortcut)"
-				showsCancelButton = true
-
-				saveShortcut(shortcut)
-				blur()
-
-				return nil
+			sessionKeyDownEventMonitor = SessionKeyDownEventMonitor { [weak self] event in
+				self?.scheduleSystemShortcutFallback(for: event)
 			}.start()
 
 			return shouldBecomeFirstResponder
+		}
+
+		private func scheduleSystemShortcutFallback(for event: NSEvent) {
+			guard
+				lastLocallyHandledKeyEventTimestamp != event.timestamp,
+				Shortcut.systemConflictCandidates(for: event).contains(where: \.isTakenBySystem)
+			else {
+				return
+			}
+
+			pendingSystemShortcutFallback?.cancel()
+
+			let workItem = DispatchWorkItem { [weak self] in
+				guard
+					let self,
+					eventMonitor != nil,
+					lastLocallyHandledKeyEventTimestamp != event.timestamp
+				else {
+					return
+				}
+
+				pendingSystemShortcutFallback = nil
+				_ = handleRecordedKeyEvent(event)
+			}
+
+			pendingSystemShortcutFallback = workItem
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
+		}
+
+		private func handleRecordedKeyEvent(_ event: NSEvent) -> NSEvent? {
+			if event.modifiers.isEmpty {
+				switch event.specialKey {
+				case .tab:
+					blur()
+
+					// We intentionally bubble up the event so it can focus the next responder.
+					return event
+				case .delete, .deleteForward, .backspace:
+					clear()
+					return nil
+				default:
+					break
+				}
+
+				if event.keyCode == kVK_Escape { // TODO: Make this strongly typed.
+					blur()
+					return nil
+				}
+			}
+
+			// The “shift” key is not allowed without other modifiers or a function key, since it doesn't actually work.
+			guard
+				!event.modifiers.subtracting([.shift, .function]).isEmpty
+					|| event.specialKey?.isFunctionKey == true,
+				let shortcut = Shortcut(event: event)
+			else {
+				NSSound.beep()
+				return nil
+			}
+
+			let matchingMenuItems = shortcut.takenByMainMenuItems
+			if let menuItem = Self.firstMenuItemRequiringConflictHandling(
+				matchingMenuItems: matchingMenuItems,
+				shortcut: shortcut,
+				shortcutBeforeRecording: shortcutBeforeRecording,
+				shortcutName: shortcutName,
+				usesNamedStorage: storageMode == .name
+			) {
+				let title = String.localizedStringWithFormat("keyboard_shortcut_used_by_menu_item".localized, menuItem.title)
+				// TODO: Find a better way to make it possible to dismiss the alert by pressing "Enter". How can we make the input automatically temporarily lose focus while the alert is open?
+				guard handleConflict(conflictPolicy.menuItem, title: title) else {
+					return nil
+				}
+			}
+
+			// See: https://developer.apple.com/forums/thread/763878?answerId=804374022#804374022
+			if shortcut.isDisallowed, conflictPolicy.disallowed != .allow {
+				showAlert(title: "keyboard_shortcut_disallowed".localized)
+				return nil
+			}
+
+			// TODO: Add button to offer to open the relevant system settings pane for the user.
+			if Shortcut.systemConflictCandidates(for: event).contains(where: \.isTakenBySystem) {
+				guard handleConflict(conflictPolicy.systemShortcut, title: "keyboard_shortcut_used_by_system".localized, message: "keyboard_shortcuts_can_be_changed".localized) else {
+					return nil
+				}
+			}
+
+			if case .disallow(let reason) = validateShortcut?(shortcut) {
+				showAlert(title: reason)
+				return nil
+			}
+
+			stringValue = "\(shortcut)"
+			showsCancelButton = true
+
+			saveShortcut(shortcut)
+			blur()
+
+			return nil
 		}
 
 		private func saveShortcut(_ shortcut: Shortcut?) {

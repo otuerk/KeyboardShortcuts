@@ -98,6 +98,113 @@ final class LocalEventMonitor {
 }
 
 
+/**
+Listen to key-down events before system shortcut handling.
+
+This read-only monitor is a fallback for system-reserved shortcuts that AppKit does not deliver to
+the recorder's local event monitor. It silently remains inactive when event-tap access is unavailable.
+*/
+final class SessionKeyDownEventMonitor {
+	private let callback: (NSEvent) -> Void
+	private var eventTap: CFMachPort?
+	private var runLoopSource: CFRunLoopSource?
+
+	init(callback: @escaping (NSEvent) -> Void) {
+		self.callback = callback
+	}
+
+	isolated deinit {
+		stop()
+	}
+
+	@discardableResult
+	func start() -> Self {
+		guard eventTap == nil else {
+			return self
+		}
+
+		let eventMask = CGEventMask(1) << CGEventType.keyDown.rawValue
+
+		guard let eventTap = CGEvent.tapCreate(
+			tap: .cgSessionEventTap,
+			place: .headInsertEventTap,
+			options: .listenOnly,
+			eventsOfInterest: eventMask,
+			callback: Self.eventTapCallback,
+			userInfo: Unmanaged.passUnretained(self).toOpaque()
+		) else {
+			return self
+		}
+
+		guard let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0) else {
+			CFMachPortInvalidate(eventTap)
+			return self
+		}
+
+		CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+		CGEvent.tapEnable(tap: eventTap, enable: true)
+		self.eventTap = eventTap
+		self.runLoopSource = runLoopSource
+
+		return self
+	}
+
+	func stop() {
+		if let runLoopSource {
+			CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+		}
+
+		if let eventTap {
+			CFMachPortInvalidate(eventTap)
+		}
+
+		runLoopSource = nil
+		eventTap = nil
+	}
+
+	private func handleEvent(type: CGEventType, event: CGEvent) {
+		if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+			if let eventTap {
+				CGEvent.tapEnable(tap: eventTap, enable: true)
+			}
+
+			return
+		}
+
+		if type == .keyDown, let nsEvent = NSEvent(cgEvent: event) {
+			callback(nsEvent)
+		}
+
+	}
+
+	nonisolated private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+		guard
+			Thread.isMainThread,
+			let userInfo
+		else {
+			return Unmanaged.passUnretained(event)
+		}
+		let eventAddress = UInt(bitPattern: Unmanaged.passUnretained(event).toOpaque())
+		let monitorAddress = UInt(bitPattern: userInfo)
+
+		MainActor.assumeIsolated {
+			guard
+				let eventPointer = UnsafeRawPointer(bitPattern: eventAddress),
+				let monitorPointer = UnsafeRawPointer(bitPattern: monitorAddress)
+			else {
+				return
+			}
+
+			let event = Unmanaged<CGEvent>.fromOpaque(eventPointer).takeUnretainedValue()
+			let monitor = Unmanaged<SessionKeyDownEventMonitor>.fromOpaque(monitorPointer).takeUnretainedValue()
+			monitor.handleEvent(type: type, event: event)
+		}
+
+		return Unmanaged.passUnretained(event)
+	}
+}
+
+
 final class RunLoopLocalEventMonitor {
 	private let runLoopMode: RunLoop.Mode
 	private let callback: (NSEvent) -> NSEvent?
