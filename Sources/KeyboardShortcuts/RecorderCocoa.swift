@@ -418,7 +418,7 @@ extension KeyboardShortcuts {
 		private func scheduleSystemShortcutFallback(for event: NSEvent) {
 			guard
 				lastLocallyHandledKeyEventTimestamp != event.timestamp,
-				Shortcut.systemConflictCandidates(for: event).contains(where: \.isTakenBySystem)
+				Self.systemConflict(for: event) != nil
 			else {
 				return
 			}
@@ -495,8 +495,16 @@ extension KeyboardShortcuts {
 			}
 
 			// TODO: Add button to offer to open the relevant system settings pane for the user.
-			if Shortcut.systemConflictCandidates(for: event).contains(where: \.isTakenBySystem) {
-				guard handleConflict(conflictPolicy.systemShortcut, title: "keyboard_shortcut_used_by_system".localized, message: "keyboard_shortcuts_can_be_changed".localized) else {
+			if let systemConflict = Self.systemConflict(for: event) {
+				let assignment = systemConflict.actionName.map {
+					String.localizedStringWithFormat(
+						"keyboard_shortcut_assigned_to".localized(defaultValue: "Assigned in System Settings to “%@”."),
+						$0
+					) + "\n\n"
+				} ?? ""
+				let message = assignment + "keyboard_shortcuts_can_be_changed".localized
+
+				guard handleConflict(conflictPolicy.systemShortcut, title: "keyboard_shortcut_used_by_system".localized, message: message) else {
 					return nil
 				}
 			}
@@ -518,6 +526,13 @@ extension KeyboardShortcuts {
 		private func saveShortcut(_ shortcut: Shortcut?) {
 			storeShortcut(shortcut)
 			onChange?(shortcut)
+		}
+
+		private static func systemConflict(for event: NSEvent) -> SystemShortcutConflict? {
+			Shortcut.systemConflictCandidates(for: event)
+				.lazy
+				.compactMap(\.systemConflict)
+				.first
 		}
 
 		/**

@@ -17,6 +17,10 @@ extension String {
 	var localized: String {
 		NSLocalizedString(self, bundle: .module, comment: self)
 	}
+
+	func localized(defaultValue: String) -> String {
+		NSLocalizedString(self, bundle: .module, value: defaultValue, comment: self)
+	}
 }
 
 

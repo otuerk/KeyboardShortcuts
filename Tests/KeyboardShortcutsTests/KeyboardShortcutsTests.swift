@@ -129,6 +129,43 @@ struct KeyboardShortcutsTests {
 		#expect(set.count == 3) // shortcut1 and shortcut2 are equal
 	}
 
+	@Test("Enabled configurable system shortcuts are parsed with their action")
+	func configurableSystemShortcutParsing() {
+		let preferences: [String: Any] = [
+			"79": [
+				"enabled": true,
+				"value": ["parameters": [65535, kVK_LeftArrow, 8_650_752]]
+			],
+			"999": [
+				"enabled": false,
+				"value": ["parameters": [65535, kVK_LeftArrow, 8_912_896]]
+			]
+		]
+		let conflicts = SystemShortcutProvider.conflicts(
+			from: preferences,
+			actionNames: [79: "Move left a space"]
+		)
+
+		#expect(conflicts.count == 1)
+		#expect(conflicts.first?.identifier == 79)
+		#expect(conflicts.first?.actionName == "Move left a space")
+		#expect(conflicts.first?.shortcut == KeyboardShortcuts.Shortcut(.leftArrow, modifiers: [.control, .function]))
+	}
+
+	@Test("Unset system shortcuts do not create conflicts")
+	func unsetSystemShortcutDoesNotConflict() {
+		let preferences: [String: Any] = [
+			"79": [
+				"enabled": true,
+				"value": ["parameters": [65535, kVK_LeftArrow, 8_650_752]]
+			]
+		]
+		let conflicts = SystemShortcutProvider.conflicts(from: preferences, actionNames: [:])
+		let optionLeft = KeyboardShortcuts.Shortcut(.leftArrow, modifiers: [.option, .function])
+
+		#expect(!conflicts.contains { $0.shortcut == optionLeft })
+	}
+
 	@Test("Name equality")
 	func testNameEquality() throws {
 		let name1 = KeyboardShortcuts.Name("test")

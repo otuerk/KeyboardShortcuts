@@ -119,12 +119,14 @@ enum Constants {
 
 extension KeyboardShortcuts.Shortcut {
 	/**
-	System-defined keyboard shortcuts.
+	The enabled user-configurable system shortcut matching this shortcut, if any.
 	*/
-	static var system: [Self] {
-		HotKeyCenter.systemShortcuts.map {
-			Self(carbonKeyCode: $0.carbonKeyCode, carbonModifiers: $0.carbonModifiers)
+	public var systemConflict: KeyboardShortcuts.SystemShortcutConflict? {
+		guard self != Self(.f12, modifiers: []) else {
+			return nil
 		}
+
+		return SystemShortcutProvider.conflicts.first { $0.shortcut == self }
 	}
 
 	// TODO: Remove this when targeting macOS 15.2. It only handles a bug present in sandboxed apps on macOS 15.0 and 15.1.
@@ -159,11 +161,7 @@ extension KeyboardShortcuts.Shortcut {
 	Useful when building a custom recorder UI to match the validation `KeyboardShortcuts.Recorder` performs.
 	*/
 	public var isTakenBySystem: Bool {
-		guard self != Self(.f12, modifiers: []) else {
-			return false
-		}
-
-		return Self.system.contains(self)
+		systemConflict != nil
 	}
 }
 
