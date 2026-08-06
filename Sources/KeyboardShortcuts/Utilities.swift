@@ -69,7 +69,8 @@ eventMonitor = LocalEventMonitor(events: [.leftMouseDown, .rightMouseDown]) { ev
 final class LocalEventMonitor {
 	private let events: NSEvent.EventTypeMask
 	private let callback: (NSEvent) -> NSEvent?
-	private weak var monitor: AnyObject?
+	// `addLocalMonitorForEvents` returns an autoreleased token that the caller must retain until removal.
+	private var monitor: AnyObject?
 
 	init(events: NSEvent.EventTypeMask, callback: @escaping (NSEvent) -> NSEvent?) {
 		self.events = events

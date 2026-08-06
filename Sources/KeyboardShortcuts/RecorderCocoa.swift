@@ -298,7 +298,19 @@ extension KeyboardShortcuts {
 
 		@_documentation(visibility: private)
 		public func controlTextDidEndEditing(_ object: Notification) {
-			endRecording()
+			// Mutating the search field cell can make AppKit transiently end and restart editing.
+			// Re-check next turn so that notification does not tear down a newly armed monitor.
+			Task { @MainActor [weak self] in
+				guard let self else {
+					return
+				}
+
+				if let editor = currentEditor(), window?.firstResponder === editor {
+					return
+				}
+
+				endRecording()
+			}
 		}
 
 		@_documentation(visibility: private)
@@ -368,11 +380,14 @@ extension KeyboardShortcuts {
 				let clickPoint = convert(event.locationInWindow, from: nil)
 				let clickMargin = 3.0
 
-				if
-					event.type == .leftMouseUp || event.type == .rightMouseUp,
-					!bounds.insetBy(dx: -clickMargin, dy: -clickMargin).contains(clickPoint)
-				{
-					blur()
+				if event.type == .leftMouseUp || event.type == .rightMouseUp {
+					guard bounds.insetBy(dx: -clickMargin, dy: -clickMargin).contains(clickPoint) else {
+						blur()
+						return event
+					}
+
+					// The search field completes its clear-button action on mouse-up.
+					// Pass clicks inside the recorder through instead of swallowing them.
 					return event
 				}
 
