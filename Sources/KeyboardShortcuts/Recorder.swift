@@ -15,6 +15,7 @@ extension KeyboardShortcuts {
 		typealias NSViewType = RecorderCocoa
 
 		let source: ShortcutSource
+		let expandsToFillWidth: Bool
 		let onChange: ((_ shortcut: Shortcut?) -> Void)?
 		let validateShortcut: ((_ shortcut: Shortcut) -> ValidationResult)?
 
@@ -46,11 +47,11 @@ extension KeyboardShortcuts {
 			let recorder: RecorderCocoa
 			switch source {
 			case .name(let name):
-				recorder = .init(for: name) { shortcut in
+				recorder = .init(for: name, expandsToFillWidth: expandsToFillWidth) { shortcut in
 					coordinator.handleChange(shortcut)
 				}
 			case .binding(let binding):
-				recorder = .init(shortcut: binding.wrappedValue) { shortcut in
+				recorder = .init(shortcut: binding.wrappedValue, expandsToFillWidth: expandsToFillWidth) { shortcut in
 					coordinator.handleChange(shortcut)
 				}
 			}
@@ -66,6 +67,7 @@ extension KeyboardShortcuts {
 			coordinator.onChange = onChange
 			nsView.validateShortcut = validateShortcut
 			nsView.conflictPolicy = context.environment.keyboardShortcutsConflictPolicy
+			nsView.expandsToFillWidth = expandsToFillWidth
 
 			switch source {
 			case .name(let name):
@@ -110,6 +112,7 @@ extension KeyboardShortcuts {
 	*/
 	public struct Recorder<Label: View>: View { // swiftlint:disable:this type_name
 		private let shortcutSource: ShortcutSource
+		private let expandsToFillWidth: Bool
 		private let onChange: ((Shortcut?) -> Void)?
 		private let hasLabel: Bool
 		private let label: Label
@@ -117,12 +120,14 @@ extension KeyboardShortcuts {
 
 		private init(
 			shortcutSource: ShortcutSource,
+			expandsToFillWidth: Bool,
 			onChange: ((Shortcut?) -> Void)? = nil,
 			hasLabel: Bool,
 			validateShortcut: ((Shortcut) -> ValidationResult)? = nil,
 			@ViewBuilder label: () -> Label
 		) {
 			self.shortcutSource = shortcutSource
+			self.expandsToFillWidth = expandsToFillWidth
 			self.onChange = onChange
 			self.hasLabel = hasLabel
 			self.validateShortcut = validateShortcut
@@ -151,6 +156,7 @@ extension KeyboardShortcuts {
 		private var recorderView: some View {
 			_Recorder(
 				source: shortcutSource,
+				expandsToFillWidth: expandsToFillWidth,
 				onChange: onChange,
 				validateShortcut: validateShortcut
 			)
@@ -161,14 +167,17 @@ extension KeyboardShortcuts {
 extension KeyboardShortcuts.Recorder<EmptyView> {
 	/**
 	- Parameter name: Strongly-typed keyboard shortcut name.
+	- Parameter expandsToFillWidth: Whether the recorder should grow to fill the horizontal space proposed by its parent. The default keeps the existing compact width.
 	- Parameter onChange: Callback which will be called when the keyboard shortcut is changed/removed by the user. This can be useful when you need more control. For example, when migrating from a different keyboard shortcut solution and you need to store the keyboard shortcut somewhere yourself instead of relying on the built-in storage. However, it's strongly recommended to just rely on the built-in storage when possible.
 	*/
 	public init(
 		for name: KeyboardShortcuts.Name,
+		expandsToFillWidth: Bool = false,
 		onChange: ((KeyboardShortcuts.Shortcut?) -> Void)? = nil
 	) {
 		self.init(
 			shortcutSource: .name(name),
+			expandsToFillWidth: expandsToFillWidth,
 			onChange: onChange,
 			hasLabel: false
 		) {}
@@ -180,14 +189,17 @@ extension KeyboardShortcuts.Recorder<EmptyView> {
 	Use this initializer when you want to manage the shortcut storage yourself instead of using the built-in `UserDefaults` storage. The shortcut is not automatically registered as a global hotkey — you are responsible for storing and handling the shortcut yourself.
 
 	- Parameter shortcut: The keyboard shortcut binding to read and write.
+	- Parameter expandsToFillWidth: Whether the recorder should grow to fill the horizontal space proposed by its parent. The default keeps the existing compact width.
 	- Parameter onChange: Callback which will be called when the keyboard shortcut is changed/removed by the user.
 	*/
 	public init(
 		shortcut: Binding<KeyboardShortcuts.Shortcut?>,
+		expandsToFillWidth: Bool = false,
 		onChange: ((KeyboardShortcuts.Shortcut?) -> Void)? = nil
 	) {
 		self.init(
 			shortcutSource: .binding(shortcut),
+			expandsToFillWidth: expandsToFillWidth,
 			onChange: onChange,
 			hasLabel: false
 		) {}
@@ -198,10 +210,12 @@ extension KeyboardShortcuts.Recorder<Text> {
 	private init(
 		_ title: Text,
 		source: KeyboardShortcuts.ShortcutSource,
+		expandsToFillWidth: Bool,
 		onChange: ((KeyboardShortcuts.Shortcut?) -> Void)?
 	) {
 		self.init(
 			shortcutSource: source,
+			expandsToFillWidth: expandsToFillWidth,
 			onChange: onChange,
 			hasLabel: true
 		) {
@@ -212,28 +226,32 @@ extension KeyboardShortcuts.Recorder<Text> {
 	/**
 	- Parameter title: The title of the keyboard shortcut recorder, describing its purpose.
 	- Parameter name: Strongly-typed keyboard shortcut name.
+	- Parameter expandsToFillWidth: Whether the recorder should grow to fill the horizontal space proposed by its parent. The default keeps the existing compact width.
 	- Parameter onChange: Callback which will be called when the keyboard shortcut is changed/removed by the user. This can be useful when you need more control. For example, when migrating from a different keyboard shortcut solution and you need to store the keyboard shortcut somewhere yourself instead of relying on the built-in storage. However, it's strongly recommended to just rely on the built-in storage when possible.
 	*/
 	public init(
 		_ title: LocalizedStringKey,
 		name: KeyboardShortcuts.Name,
+		expandsToFillWidth: Bool = false,
 		onChange: ((KeyboardShortcuts.Shortcut?) -> Void)? = nil
 	) {
-		self.init(Text(title), source: .name(name), onChange: onChange)
+		self.init(Text(title), source: .name(name), expandsToFillWidth: expandsToFillWidth, onChange: onChange)
 	}
 
 	/**
 	- Parameter title: The title of the keyboard shortcut recorder, describing its purpose.
 	- Parameter name: Strongly-typed keyboard shortcut name.
+	- Parameter expandsToFillWidth: Whether the recorder should grow to fill the horizontal space proposed by its parent. The default keeps the existing compact width.
 	- Parameter onChange: Callback which will be called when the keyboard shortcut is changed/removed by the user. This can be useful when you need more control. For example, when migrating from a different keyboard shortcut solution and you need to store the keyboard shortcut somewhere yourself instead of relying on the built-in storage. However, it's strongly recommended to just rely on the built-in storage when possible.
 	*/
 	@_disfavoredOverload
 	public init(
 		_ title: String,
 		name: KeyboardShortcuts.Name,
+		expandsToFillWidth: Bool = false,
 		onChange: ((KeyboardShortcuts.Shortcut?) -> Void)? = nil
 	) {
-		self.init(Text(title), source: .name(name), onChange: onChange)
+		self.init(Text(title), source: .name(name), expandsToFillWidth: expandsToFillWidth, onChange: onChange)
 	}
 
 	/**
@@ -243,14 +261,16 @@ extension KeyboardShortcuts.Recorder<Text> {
 
 	- Parameter title: The title of the keyboard shortcut recorder, describing its purpose.
 	- Parameter shortcut: The keyboard shortcut binding to read and write.
+	- Parameter expandsToFillWidth: Whether the recorder should grow to fill the horizontal space proposed by its parent. The default keeps the existing compact width.
 	- Parameter onChange: Callback which will be called when the keyboard shortcut is changed/removed by the user.
 	*/
 	public init(
 		_ title: LocalizedStringKey,
 		shortcut: Binding<KeyboardShortcuts.Shortcut?>,
+		expandsToFillWidth: Bool = false,
 		onChange: ((KeyboardShortcuts.Shortcut?) -> Void)? = nil
 	) {
-		self.init(Text(title), source: .binding(shortcut), onChange: onChange)
+		self.init(Text(title), source: .binding(shortcut), expandsToFillWidth: expandsToFillWidth, onChange: onChange)
 	}
 
 	/**
@@ -260,31 +280,36 @@ extension KeyboardShortcuts.Recorder<Text> {
 
 	- Parameter title: The title of the keyboard shortcut recorder, describing its purpose.
 	- Parameter shortcut: The keyboard shortcut binding to read and write.
+	- Parameter expandsToFillWidth: Whether the recorder should grow to fill the horizontal space proposed by its parent. The default keeps the existing compact width.
 	- Parameter onChange: Callback which will be called when the keyboard shortcut is changed/removed by the user.
 	*/
 	@_disfavoredOverload
 	public init(
 		_ title: String,
 		shortcut: Binding<KeyboardShortcuts.Shortcut?>,
+		expandsToFillWidth: Bool = false,
 		onChange: ((KeyboardShortcuts.Shortcut?) -> Void)? = nil
 	) {
-		self.init(Text(title), source: .binding(shortcut), onChange: onChange)
+		self.init(Text(title), source: .binding(shortcut), expandsToFillWidth: expandsToFillWidth, onChange: onChange)
 	}
 }
 
 extension KeyboardShortcuts.Recorder {
 	/**
 	- Parameter name: Strongly-typed keyboard shortcut name.
+	- Parameter expandsToFillWidth: Whether the recorder should grow to fill the horizontal space proposed by its parent. The default keeps the existing compact width.
 	- Parameter onChange: Callback which will be called when the keyboard shortcut is changed/removed by the user. This can be useful when you need more control. For example, when migrating from a different keyboard shortcut solution and you need to store the keyboard shortcut somewhere yourself instead of relying on the built-in storage. However, it's strongly recommended to just rely on the built-in storage when possible.
 	- Parameter label: A view that describes the purpose of the keyboard shortcut recorder.
 	*/
 	public init(
 		for name: KeyboardShortcuts.Name,
+		expandsToFillWidth: Bool = false,
 		onChange: ((KeyboardShortcuts.Shortcut?) -> Void)? = nil,
 		@ViewBuilder label: () -> Label
 	) {
 		self.init(
 			shortcutSource: .name(name),
+			expandsToFillWidth: expandsToFillWidth,
 			onChange: onChange,
 			hasLabel: true,
 			label: label
@@ -297,16 +322,19 @@ extension KeyboardShortcuts.Recorder {
 	Use this initializer when you want to manage the shortcut storage yourself instead of using the built-in `UserDefaults` storage. The shortcut is not automatically registered as a global hotkey — you are responsible for storing and handling the shortcut yourself.
 
 	- Parameter shortcut: The keyboard shortcut binding to read and write.
+	- Parameter expandsToFillWidth: Whether the recorder should grow to fill the horizontal space proposed by its parent. The default keeps the existing compact width.
 	- Parameter onChange: Callback which will be called when the keyboard shortcut is changed/removed by the user.
 	- Parameter label: A view that describes the purpose of the keyboard shortcut recorder.
 	*/
 	public init(
 		shortcut: Binding<KeyboardShortcuts.Shortcut?>,
+		expandsToFillWidth: Bool = false,
 		onChange: ((KeyboardShortcuts.Shortcut?) -> Void)? = nil,
 		@ViewBuilder label: () -> Label
 	) {
 		self.init(
 			shortcutSource: .binding(shortcut),
+			expandsToFillWidth: expandsToFillWidth,
 			onChange: onChange,
 			hasLabel: true,
 			label: label

@@ -11,6 +11,20 @@ struct RecorderCocoaLayoutTests {
 
 		#expect(recorder.frame.width >= 130)
 		#expect(recorder.frame.height > 0)
+		#expect(!recorder.expandsToFillWidth)
+		#expect(recorder.intrinsicContentSize.width == 130)
+	}
+
+	@Test("RecorderCocoa can expand to fill its parent")
+	func testRecorderExpandedWidth() throws {
+		let recorder = KeyboardShortcuts.RecorderCocoa(
+			for: .init("test"),
+			expandsToFillWidth: true
+		)
+
+		#expect(recorder.expandsToFillWidth)
+		#expect(recorder.intrinsicContentSize.width == NSView.noIntrinsicMetric)
+		#expect(recorder.contentHuggingPriority(for: .horizontal) == .defaultLow)
 	}
 
 	@Test("RecorderCocoa works with addSubview")

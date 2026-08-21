@@ -77,6 +77,21 @@ extension KeyboardShortcuts {
 		public var conflictPolicy = ConflictPolicy.default
 
 		/**
+		Whether the recorder should grow to fill the horizontal space offered by its parent.
+
+		The default is `false`, which preserves the existing compact width.
+		*/
+		public var expandsToFillWidth: Bool {
+			didSet {
+				guard expandsToFillWidth != oldValue else {
+					return
+				}
+
+				updateHorizontalSizing()
+			}
+		}
+
+		/**
 		The shortcut name for the recorder.
 
 		Can be dynamically changed at any time.
@@ -129,7 +144,7 @@ extension KeyboardShortcuts {
 		@_documentation(visibility: private)
 		override public var intrinsicContentSize: CGSize {
 			var size = super.intrinsicContentSize
-			size.width = minimumWidth
+			size.width = expandsToFillWidth ? NSView.noIntrinsicMetric : minimumWidth
 			return size
 		}
 
@@ -144,13 +159,16 @@ extension KeyboardShortcuts {
 
 		/**
 		- Parameter name: Strongly-typed keyboard shortcut name.
+		- Parameter expandsToFillWidth: Whether the recorder should grow to fill the horizontal space offered by its parent. The default keeps the existing compact width.
 		- Parameter onChange: Callback which will be called when the keyboard shortcut is changed/removed by the user. This can be useful when you need more control. For example, when migrating from a different keyboard shortcut solution and you need to store the keyboard shortcut somewhere yourself instead of relying on the built-in storage. However, it's strongly recommended to just rely on the built-in storage when possible.
 		*/
 		public required init(
 			for name: Name,
+			expandsToFillWidth: Bool = false,
 			onChange: ((_ shortcut: Shortcut?) -> Void)? = nil
 		) {
 			self.shortcutName = name
+			self.expandsToFillWidth = expandsToFillWidth
 			self.onChange = onChange
 			self.storageMode = .name
 
@@ -166,13 +184,16 @@ extension KeyboardShortcuts {
 
 		/**
 		- Parameter shortcut: The initial keyboard shortcut value.
+		- Parameter expandsToFillWidth: Whether the recorder should grow to fill the horizontal space offered by its parent. The default keeps the existing compact width.
 		- Parameter onChange: Callback which will be called when the keyboard shortcut is changed/removed by the user.
 		*/
 		public required init(
 			shortcut: Shortcut?,
+			expandsToFillWidth: Bool = false,
 			onChange: ((_ shortcut: Shortcut?) -> Void)? = nil
 		) {
 			self.shortcutName = Name(rawValueWithoutInitialization: "")
+			self.expandsToFillWidth = expandsToFillWidth
 			self.onChange = onChange
 			self.storageMode = .binding
 			self.bindingShortcut = shortcut
@@ -204,10 +225,15 @@ extension KeyboardShortcuts {
 
 			wantsLayer = true
 			setContentHuggingPriority(.defaultHigh, for: .vertical)
-			setContentHuggingPriority(.defaultHigh, for: .horizontal)
+			updateHorizontalSizing()
 
 			// Hide the cancel button when not showing the shortcut so the placeholder text is properly centered. Must be last.
 			cancelButton = (cell as? NSSearchFieldCell)?.cancelButtonCell
+		}
+
+		private func updateHorizontalSizing() {
+			setContentHuggingPriority(expandsToFillWidth ? .defaultLow : .defaultHigh, for: .horizontal)
+			invalidateIntrinsicContentSize()
 		}
 
 		private func removeObserver(_ observer: inout NSObjectProtocol?) {
